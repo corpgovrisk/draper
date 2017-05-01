@@ -63,7 +63,7 @@ module Draper
         it "does not trigger decoration" do
           decorator = CollectionDecorator.new([])
 
-          decorator.should_not_receive(:decorated_collection)
+          expect(decorator).not_to receive(:decorated_collection)
           decorator.context = {other: "context"}
         end
 
@@ -110,37 +110,22 @@ module Draper
       protect_class ProductsDecorator
 
       it "defaults the :to option to :object" do
-        Object.should_receive(:delegate).with(:foo, :bar, to: :object)
+        expect(Object).to receive(:delegate).with(:foo, :bar, to: :object)
         ProductsDecorator.delegate :foo, :bar
       end
 
       it "does not overwrite the :to option if supplied" do
-        Object.should_receive(:delegate).with(:foo, :bar, to: :baz)
+        expect(Object).to receive(:delegate).with(:foo, :bar, to: :baz)
         ProductsDecorator.delegate :foo, :bar, to: :baz
       end
     end
 
     describe "#find" do
-      context "with a block" do
-        it "decorates Enumerable#find" do
-          decorator = CollectionDecorator.new([])
+      it "decorates Enumerable#find" do
+        decorator = CollectionDecorator.new([])
 
-          decorator.decorated_collection.should_receive(:find).and_return(:delegated)
-          expect(decorator.find{|p| p.title == "title"}).to be :delegated
-        end
-      end
-
-      context "without a block" do
-        it "decorates object.find" do
-          object = []
-          found = double(decorate: :decorated)
-          decorator = CollectionDecorator.new(object)
-
-          object.should_receive(:find).and_return(found)
-          ActiveSupport::Deprecation.silence do
-            expect(decorator.find(1)).to be :decorated
-          end
-        end
+        expect(decorator.decorated_collection).to receive(:find).and_return(:delegated)
+        expect(decorator.find{|p| p.title == "title"}).to be :delegated
       end
     end
 
@@ -149,7 +134,7 @@ module Draper
       it "delegates to the decorated collection" do
         decorator = CollectionDecorator.new([])
 
-        decorator.decorated_collection.should_receive(:to_ary).and_return(:delegated)
+        expect(decorator.decorated_collection).to receive(:to_ary).and_return(:delegated)
         expect(decorator.to_ary).to be :delegated
       end
     end
@@ -157,7 +142,7 @@ module Draper
     it "delegates array methods to the decorated collection" do
       decorator = CollectionDecorator.new([])
 
-      decorator.decorated_collection.should_receive(:[]).with(42).and_return(:delegated)
+      allow(decorator).to receive_message_chain(:decorated_collection, :[]).with(42).and_return(:delegated)
       expect(decorator[42]).to be :delegated
     end
 
@@ -168,7 +153,7 @@ module Draper
           decorator = CollectionDecorator.new(object)
           other = ProductsDecorator.new(object)
 
-          expect(decorator == other).to be_true
+          expect(decorator == other).to be_truthy
         end
       end
 
@@ -177,7 +162,7 @@ module Draper
           decorator = CollectionDecorator.new([Product.new, Product.new])
           other = ProductsDecorator.new([Product.new, Product.new])
 
-          expect(decorator == other).to be_false
+          expect(decorator == other).to be_falsey
         end
       end
 
@@ -187,7 +172,7 @@ module Draper
           decorator = CollectionDecorator.new(object)
           other = object.dup
 
-          expect(decorator == other).to be_true
+          expect(decorator == other).to be_truthy
         end
       end
 
@@ -196,7 +181,7 @@ module Draper
           decorator = CollectionDecorator.new([Product.new, Product.new])
           other = [Product.new, Product.new]
 
-          expect(decorator == other).to be_false
+          expect(decorator == other).to be_falsey
         end
       end
 
@@ -207,7 +192,7 @@ module Draper
           other = object.dup
 
           decorator << Product.new.decorate
-          expect(decorator == other).to be_false
+          expect(decorator == other).to be_falsey
         end
       end
     end
@@ -238,6 +223,15 @@ module Draper
       end
     end
 
+    describe '#object' do
+      it 'returns the underlying collection' do
+        collection = [Product.new]
+        decorator = ProductsDecorator.new(collection)
+
+        expect(decorator.object).to eq collection
+      end
+    end
+
     describe '#decorated?' do
       it 'returns true' do
         decorator = ProductsDecorator.new([Product.new])
@@ -258,14 +252,14 @@ module Draper
     describe '#kind_of?' do
       it 'asks the kind of its decorated collection' do
         decorator = ProductsDecorator.new([])
-        decorator.decorated_collection.should_receive(:kind_of?).with(Array).and_return("true")
+        expect(decorator.decorated_collection).to receive(:kind_of?).with(Array).and_return("true")
         expect(decorator.kind_of?(Array)).to eq "true"
       end
 
       context 'when asking the underlying collection returns false' do
         it 'asks the CollectionDecorator instance itself' do
           decorator = ProductsDecorator.new([])
-          decorator.decorated_collection.stub(:kind_of?).with(::Draper::CollectionDecorator).and_return(false)
+          allow(decorator.decorated_collection).to receive(:kind_of?).with(::Draper::CollectionDecorator).and_return(false)
           expect(decorator.kind_of?(::Draper::CollectionDecorator)).to be true
         end
       end
@@ -291,6 +285,39 @@ module Draper
         decorator = CollectionDecorator.new([Product.new])
 
         expect(decorator.replace([:foo, :bar])).to be decorator
+      end
+    end
+
+    describe "#each" do
+      it "iterates over the collection, decorating as it goes" do
+        collection = [Product.new]
+        decorator = CollectionDecorator.new(collection)
+
+        expect(collection).to_not receive(:map)
+        decorator.each { |product| product.decorated? }
+        expect(decorator.instance_variable_get(:@decorated_collection)[0]).to be_decorated
+      end
+
+      it "uses decorated_collection if already set" do
+        decorated_collection = double(:decorated_collection)
+        decorator = CollectionDecorator.new([])
+        decorator.instance_variable_set(:@decorated_collection, decorated_collection)
+
+        expect(decorated_collection).to receive(:each)
+
+        decorator.each
+      end
+    end
+
+    describe "Enumerable methods" do
+      it "doesn't delegate Enumerable methods to its decorated collection" do
+        decorated_collection = double(:decorated_collection)
+        decorator = CollectionDecorator.new([])
+        decorator.instance_variable_set(:@decorated_collection, decorated_collection)
+
+        expect(decorated_collection).to_not receive(:map)
+
+        decorator.map
       end
     end
 

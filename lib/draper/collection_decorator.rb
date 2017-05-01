@@ -4,6 +4,9 @@ module Draper
     include Draper::ViewHelpers
     extend Draper::Delegation
 
+    # @return the collection being decorated.
+    attr_reader :object
+
     # @return [Class] the decorator class used to decorate each item, as set by
     #   {#initialize}.
     attr_reader :decorator_class
@@ -12,7 +15,7 @@ module Draper
     #   to each item's decorator.
     attr_accessor :context
 
-    array_methods = Array.instance_methods - Object.instance_methods
+    array_methods = Array.instance_methods - Object.instance_methods - Enumerable.instance_methods
     delegate :==, :as_json, *array_methods, to: :decorated_collection
 
     # @param [Enumerable] object
@@ -39,17 +42,24 @@ module Draper
       @decorated_collection ||= object.map{|item| decorate_item(item)}
     end
 
-    # Delegated to the decorated collection when using the block form
-    # (`Enumerable#find`) or to the decorator class if not
-    # (`ActiveRecord::FinderMethods#find`)
-    def find(*args, &block)
-      if block_given?
-        decorated_collection.find(*args, &block)
+    # Optimization to prevent unnecessary iteration (useful for larger collections).
+    # Iterates over the collection, decorating objects as it goes. If the decorated collection is
+    # already set, iterate over it instead.
+    def each(&block)
+      if @decorated_collection
+        @decorated_collection.each(&block)
       else
-        ActiveSupport::Deprecation.warn("Using ActiveRecord's `find` on a CollectionDecorator is deprecated. Call `find` on a model, and then decorate the result", caller)
-        decorate_item(object.find(*args))
+        @decorated_collection = []
+        object.each do |item|
+          decorated_item = decorate_item(item)
+          @decorated_collection << decorated_item
+
+          block.call(decorated_item)
+        end
       end
     end
+
+    delegate :find, to: :decorated_collection
 
     def to_s
       "#<#{self.class.name} of #{decorator_class || "inferred decorators"} for #{object.inspect}>"
@@ -78,9 +88,6 @@ module Draper
     end
 
     protected
-
-    # @return the collection being decorated.
-    attr_reader :object
 
     # Decorates the given item.
     def decorate_item(item)

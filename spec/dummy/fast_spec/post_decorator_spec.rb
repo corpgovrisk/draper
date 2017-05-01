@@ -1,5 +1,4 @@
 require 'draper'
-require 'rspec'
 
 require 'active_model/naming'
 require_relative '../app/decorators/post_decorator'
@@ -33,6 +32,6 @@ describe PostDecorator do
   end
 
   it "can't be passed implicitly to url_for" do
-    expect{decorator.link}.to raise_error
+    expect{decorator.link}.to raise_error ArgumentError
   end
 end

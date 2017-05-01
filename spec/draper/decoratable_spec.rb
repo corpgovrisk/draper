@@ -22,7 +22,7 @@ module Draper
 
       it "uses the #decorator_class" do
         product = Product.new
-        product.stub decorator_class: OtherDecorator
+        allow(product).to receive_messages decorator_class: OtherDecorator
 
         expect(product.decorate).to be_an_instance_of OtherDecorator
       end
@@ -48,21 +48,21 @@ module Draper
 
     describe "#decorator_class?" do
       it "returns true for decoratable model" do
-        expect(Product.new.decorator_class?).to be_true
+        expect(Product.new.decorator_class?).to be_truthy
       end
 
       it "returns false for non-decoratable model" do
-        expect(Model.new.decorator_class?).to be_false
+        expect(Model.new.decorator_class?).to be_falsey
       end
     end
 
     describe ".decorator_class?" do
       it "returns true for decoratable model" do
-        expect(Product.decorator_class?).to be_true
+        expect(Product.decorator_class?).to be_truthy
       end
 
       it "returns false for non-decoratable model" do
-        expect(Model.decorator_class?).to be_false
+        expect(Model.decorator_class?).to be_falsey
       end
     end
 
@@ -70,7 +70,7 @@ module Draper
       it "delegates to .decorator_class" do
         product = Product.new
 
-        Product.should_receive(:decorator_class).and_return(:some_decorator)
+        expect(Product).to receive(:decorator_class).and_return(:some_decorator)
         expect(product.decorator_class).to be :some_decorator
       end
     end
@@ -83,66 +83,70 @@ module Draper
       it "is true when #== is true" do
         product = Product.new
 
-        product.should_receive(:==).and_return(true)
-        expect(product === :anything).to be_true
+        expect(product).to receive(:==).and_return(true)
+        expect(product === :anything).to be_truthy
       end
 
       it "is false when #== is false" do
         product = Product.new
 
-        product.should_receive(:==).and_return(false)
-        expect(product === :anything).to be_false
+        expect(product).to receive(:==).and_return(false)
+        expect(product === :anything).to be_falsey
       end
     end
 
     describe ".====" do
       it "is true for an instance" do
-        expect(Product === Product.new).to be_true
+        expect(Product === Product.new).to be_truthy
       end
 
       it "is true for a derived instance" do
-        expect(Product === Class.new(Product).new).to be_true
+        expect(Product === Class.new(Product).new).to be_truthy
       end
 
       it "is false for an unrelated instance" do
-        expect(Product === Model.new).to be_false
+        expect(Product === Model.new).to be_falsey
       end
 
       it "is true for a decorated instance" do
-        decorator = double(object: Product.new)
+        decorator = Product.new.decorate
 
-        expect(Product === decorator).to be_true
+        expect(Product === decorator).to be_truthy
       end
 
       it "is true for a decorated derived instance" do
-        decorator = double(object: Class.new(Product).new)
+        decorator = Class.new(Product).new.decorate
 
-        expect(Product === decorator).to be_true
+        expect(Product === decorator).to be_truthy
       end
 
       it "is false for a decorated unrelated instance" do
-        decorator = double(object: Model.new)
+        decorator = Other.new.decorate
 
-        expect(Product === decorator).to be_false
+        expect(Product === decorator).to be_falsey
+      end
+
+      it "is false for a non-decorator which happens to respond to object" do
+        decorator = double(object: Product.new)
+
+        expect(Product === decorator).to be_falsey
       end
     end
 
     describe ".decorate" do
-      let(:scoping_method) { Rails::VERSION::MAJOR >= 4 ? :all : :scoped }
-
       it "calls #decorate_collection on .decorator_class" do
         scoped = [Product.new]
-        Product.stub scoping_method => scoped
+        allow(Product).to receive(:all).and_return(scoped)
 
-        Product.decorator_class.should_receive(:decorate_collection).with(scoped, with: nil).and_return(:decorated_collection)
+        expect(Product.decorator_class).to receive(:decorate_collection).with(scoped, with: nil).and_return(:decorated_collection)
         expect(Product.decorate).to be :decorated_collection
       end
 
       it "accepts options" do
         options = {with: ProductDecorator, context: {some: "context"}}
-        Product.stub scoping_method => []
+        allow(Product).to receive(:all).and_return([])
 
-        Product.decorator_class.should_receive(:decorate_collection).with([], options)
+        expect(Product.decorator_class).to receive(:decorate_collection).with([], options)
         Product.decorate(options)
       end
     end
@@ -162,7 +166,7 @@ module Draper
 
       context "for ActiveModel classes" do
         it "infers the decorator from the model name" do
-          Product.stub(:model_name).and_return("Other")
+          allow(Product).to receive(:model_name){"Other"}
 
           expect(Product.decorator_class).to be OtherDecorator
         end
@@ -177,10 +181,19 @@ module Draper
 
         context "for ActiveModel classes" do
           it "infers the decorator from the model name" do
-            Namespaced::Product.stub(:model_name).and_return("Namespaced::Other")
+            allow(Namespaced::Product).to receive(:model_name).and_return("Namespaced::Other")
 
             expect(Namespaced::Product.decorator_class).to be Namespaced::OtherDecorator
           end
+        end
+      end
+
+      context "when the decorator contains name error" do
+        it "throws an NameError" do
+          # We imitate ActiveSupport::Autoload behavior here in order to cause lazy NameError exception raising
+          allow_any_instance_of(Module).to receive(:const_missing) { Class.new { any_nonexisting_method_name } }
+
+          expect{Model.decorator_class}.to raise_error { |error| expect(error).to be_an_instance_of(NameError) }
         end
       end
 
@@ -192,7 +205,7 @@ module Draper
 
       context "when an unrelated NameError is thrown" do
         it "re-raises that error" do
-          String.any_instance.stub(:constantize).and_return{Draper::Base}
+          allow_any_instance_of(String).to receive(:constantize) { Draper::Base }
           expect{Product.decorator_class}.to raise_error NameError, /Draper::Base/
         end
       end

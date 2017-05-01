@@ -18,7 +18,7 @@ module Draper
         view_context = double
         helper_proxy = HelperProxy.new(view_context)
 
-        view_context.stub(:foo).and_return{|arg| arg}
+        allow(view_context).to receive(:foo) { |arg| arg }
         expect(helper_proxy.foo(:passed)).to be :passed
       end
 
@@ -26,7 +26,7 @@ module Draper
         view_context = double
         helper_proxy = HelperProxy.new(view_context)
 
-        view_context.stub(:foo).and_return{|&block| block.call}
+        allow(view_context).to receive(:foo) { |&block| block.call }
         expect(helper_proxy.foo{:yielded}).to be :yielded
       end
 
@@ -39,12 +39,20 @@ module Draper
       end
     end
 
+    describe "#respond_to_missing?" do
+      it "allows #method to be called on the view context" do
+        helper_proxy = HelperProxy.new(double(foo: "bar"))
+
+        expect(helper_proxy.respond_to?(:foo)).to be_truthy
+      end
+    end
+
     describe "proxying methods which are overriding" do
       it "proxies :capture" do
         view_context = double
         helper_proxy = HelperProxy.new(view_context)
 
-        view_context.stub(:capture).and_return{|*args, &block| [*args, block.call] }
+        allow(view_context).to receive(:capture) { |*args, &block| [*args, block.call] }
         expect(helper_proxy.capture(:first_arg, :second_arg){:yielded}).to \
           be_eql [:first_arg, :second_arg, :yielded]
       end
